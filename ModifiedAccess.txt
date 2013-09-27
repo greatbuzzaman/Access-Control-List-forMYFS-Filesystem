@@ -1,0 +1,135 @@
+
+int
+vop_stdaccess(struct vop_access_args *ap)
+{
+        struct myfs_inode *ip;
+        int i=0,k=0,permssn=0;
+        KASSERT((ap->a_accmode & ~(VEXEC | VWRITE | VREAD | VADMIN |
+            VAPPEND)) == 0, ("invalid bit in accmode"));
+        if(ap->a_vp->v_op==&myfs_ffs_vnodeops2){
+                uprintf("FILE is in myfs Filesystem \n");
+                ip=MYFS_VTOI(ap->a_vp);
+                VI_LOCK(ap->a_vp);
+                if(ap->a_td->td_ucred->cr_ruid==0){
+                        return 0;
+                }
+                if (ap->a_accmode & VEXEC)
+                        permssn|= 1;
+                if (ap->a_accmode & VREAD)
+                        permssn|= 4;
+                if (ap->a_accmode & VWRITE)
+                permssn|= 2;
+                while(i<MAX_ACLS)
+                {
+                        if(ip->i_din2->uidhead[i].myfs_uid==ap->a_td->td_ucred->cr_ruid)
+                        {
+                                if(permssn==(ip->i_din2->uidhead[i].uid_perm))
+                                {
+                                        VI_UNLOCK(ap->a_vp);
+                                        return 0;
+                                }
+                                else
+                                {
+                                        VI_UNLOCK(ap->a_vp);
+                                        return EACCES;
+                                }
+                                break;
+                        }
+                        i++;
+               }
+                for(k=0;k<ap->a_td->td_ucred->cr_ngroups;k++)
+                {
+                        for(i=0;i<MAX_ACLS;i++)
+                        {
+                                if(ap->a_td->td_ucred->cr_groups[k]==ip->i_din2->gidhead[i].myfs_gid)
+                                {
+                                        if(permssn==(ip->i_din2->gidhead[i].gid_perm))
+                                        {
+                                                VI_UNLOCK(ap->a_vp);
+                                                return 0;
+                                        }
+                                        else
+                                        {
+                                                VI_UNLOCK(ap->a_vp);
+                                                return EACCES;
+                                        }
+                                }
+                        }
+                }
+                VI_UNLOCK(ap->a_vp);
+        }
+
+
+
+        return (VOP_ACCESSX(ap->a_vp, ap->a_accmode, ap->a_cred, ap->a_td));
+}
+
+int
+vop_stdaccessx(struct vop_accessx_args *ap)
+{
+        struct myfs_inode *ip;
+        int i=0,k=0,permssn=0;
+        int error;
+        accmode_t accmode = ap->a_accmode;
+
+        error = vfs_unixify_accmode(&accmode);
+        if (error != 0)
+                return (error);
+
+        if (accmode == 0)
+                return (0);
+         if(ap->a_vp->v_op==&myfs_ffs_vnodeops2){
+                uprintf("FILE is in myfs Filesystem \n");
+                ip=MYFS_VTOI(ap->a_vp);
+                VI_LOCK(ap->a_vp);
+                if(ap->a_td->td_ucred->cr_ruid==0){
+                        return 0;
+                }
+                if (ap->a_accmode & VEXEC)
+                        permssn|= 1;
+                if (ap->a_accmode & VREAD)
+                        permssn|= 4;
+                if (ap->a_accmode & VWRITE)
+                        permssn|= 2;
+                while(i<MAX_ACLS)
+                {
+                        if(ip->i_din2->uidhead[i].myfs_uid==ap->a_td->td_ucred->cr_ruid)
+                        {
+                                if(permssn==(ip->i_din2->uidhead[i].uid_perm))
+                                {
+                                        VI_UNLOCK(ap->a_vp);
+                                        return 0;
+                                }
+                                else
+                                {
+                                        VI_UNLOCK(ap->a_vp);
+                                        return EACCES;
+                                }
+                                break;
+                        }
+                        i++;
+               }
+                for(k=0;k<ap->a_td->td_ucred->cr_ngroups;k++)
+                {
+                        for(i=0;i<MAX_ACLS;i++)
+                        {
+                                if(ap->a_td->td_ucred->cr_groups[k]==ip->i_din2->gidhead[i].myfs_gid)
+                                {
+                                        if(permssn==(ip->i_din2->gidhead[i].gid_perm))
+                                        {
+                                                VI_UNLOCK(ap->a_vp);
+                                                return 0;
+                                        }
+                                        else
+                                        {
+                                                VI_UNLOCK(ap->a_vp);
+                                                return EACCES;
+                                        }
+                                }
+                        }
+                }
+                VI_UNLOCK(ap->a_vp);
+        }
+        return (VOP_ACCESS(ap->a_vp, accmode, ap->a_cred, ap->a_td));
+}
+

@@ -1,0 +1,23 @@
+~
+~
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+
+int main( int argc, char *argv[] )
+{
+    int ret;
+    int perm,u;
+        u=getuid();
+    if (setacl("/scratch/test_acl.txt",0,u,3)){
+        printf("\n Error in Setting ACL LIST ");
+        return 0;
+        }
+    ret=getacl("/scratch/test_acl.txt",0,u);
+    printf("\n  Getting ACL LIST PERMISSION  %d\n",ret );
+    if(clearacl("/scratch/test_acl.txt",0,u)){
+        printf("\n Error in Clear ACL ENTRY \n");
+        return 0;
+        }
+return 0;
+}

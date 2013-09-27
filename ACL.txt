@@ -1,0 +1,536 @@
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bio.h>
+#include <sys/buf.h>
+#include<sys/sysproto.h>
+#include <sys/fcntl.h>
+#include <sys/namei.h>
+#include <sys/mount.h>
+#include <sys/vnode.h>
+#include <sys/dirent.h>
+#include <sys/extattr.h>
+
+#include "../../../local/myfs/myfs_quota.h"
+#include "../../../local/myfs/myfs_inode.h"
+#include "../../../local/myfs/myfs_dir.h"
+#include "../../../local/myfs/myfs_extattr.h"
+#include "../../../local/myfs/myfs_ufsmount.h"
+#include "../../../local/myfs/myfs_ufs_extern.h"
+#include "../../../local/myfs/myfs_ffs_extern.h"
+#define MAX_ACLS 16
+
+int
+sys_setacl(struct thread *td, struct setacl_args *uap)
+{
+        int error=0,permssn=0,i=0;
+        uint32_t id=0;
+        struct nameidata nd;
+        struct myfs_inode *ip;
+        NDINIT(&nd, LOOKUP, FOLLOW, UIO_USERSPACE, uap->name, td);
+        if ((error = namei(&nd)) != 0)
+                return error;
+        NDFREE(&nd, NDF_ONLY_PNBUF);
+        if (nd.ni_vp->v_op == &myfs_ffs_vnodeops2){
+            uprintf("File was in a myfs filesystem.\n");
+            ip=MYFS_VTOI(nd.ni_vp);     /*convert vnode pointer to inode pointer from vnode of result */
+            VI_LOCK(nd.ni_vp);
+            if(td->td_ucred->cr_ruid==ip->i_din2->di_uid){
+                printf("\n in setacl for same uid");
+                if (uap->idnum==0){
+                    id=td->td_ucred->cr_ruid;
+                }
+                else{
+                    id=uap->idnum;
+                }
+                if(uap->perms & MYFS_EXEC_PERM){
+                    permssn=permssn|MYFS_EXEC_PERM;
+                }
+                if(uap->perms & MYFS_WRITE_PERM){
+                    permssn=permssn|MYFS_WRITE_PERM;
+                }
+                if(uap->perms & MYFS_READ_PERM){
+                    permssn=permssn|MYFS_READ_PERM;
+                }
+                if (uap->type == 0){
+                        printf("\n in setacl for same uidtyep o");
+                        while(ip->i_din2->uidhead[i].myfs_uid!=0 && i<MAX_ACLS){
+                                printf("\n in setacl for same uid in list");
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        ip->i_din2->uidhead[i].myfs_uid=id;
+                                        ip->i_din2->uidhead[i].uid_perm=permssn;
+                                        uprintf("ACL ENTRY: Success, UID already exist\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ACL LIST FULL: Limit exceeded for UID list entries.\n ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        ip->i_din2->uidhead[i].myfs_uid=id;
+                        ip->i_din2->uidhead[i].uid_perm=permssn;
+                        uprintf("ACL ENTRY: Success \n");
+                        VI_UNLOCK(nd.ni_vp);
+                        return 0;
+                }
+                else if(uap->type==1){
+                        printf("\n in setacl for same uid type 1");
+                        if (uap->idnum==0){
+                                id=td->td_ucred->cr_groups[0];
+                        }
+                        else{
+                                int k=0,flag=0;
+                                for(k=0;k<td->td_ucred->cr_ngroups;k++){
+                                        if(uap->idnum==td->td_ucred->cr_groups[k]){
+                                                flag=1;
+                                                id=uap->idnum;
+                                                break;
+                                        }
+                                }
+                                if(flag!=1){
+                                        uprintf("EACCES: NOT PERMITTED,OWNER NOT IN GROUP.\n");
+                                        error=EACCES;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return(error);
+                                }
+                        }
+                        while(ip->i_din2->gidhead[i].myfs_gid!=0 && i<MAX_ACLS){
+                                if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                        ip->i_din2->gidhead[i].myfs_gid=id;
+                                        ip->i_din2->gidhead[i].gid_perm=permssn;
+                                        uprintf("ACL ENTRY: Success,GID already exist\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ACL LIST FULL: Limit exceeded for UID list entries. \n");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        ip->i_din2->gidhead[i].myfs_gid=id;
+                        ip->i_din2->gidhead[i].gid_perm=permssn;
+                        uprintf("ACL ENTRY: Success \n");
+                        VI_UNLOCK(nd.ni_vp);
+                        return 0;
+                }
+                else{
+                        uprintf("EPERM: NOT PERMITTED, SINCE WRONG TYPE ENTERED(not 0 or 1).\n");
+                        error=EPERM;
+                        VI_UNLOCK(nd.ni_vp);
+                        return(error);
+                }
+           }
+           else if(td->td_ucred->cr_ruid==0){
+                if (uap->idnum==0){
+                    uprintf("EPERM: NOT PERMITTED, ROOT CANNOT SET FOR ITS OWN PERMISSION.\n");
+                    error=EPERM;
+                    VI_UNLOCK(nd.ni_vp);
+                    return(error);
+                }
+                else{
+                    id=uap->idnum;
+                }
+                if(uap->perms & MYFS_EXEC_PERM){
+                    permssn=permssn|MYFS_EXEC_PERM;
+                }
+                if(uap->perms & MYFS_WRITE_PERM){
+                    permssn=permssn|MYFS_WRITE_PERM;
+                }
+                if(uap->perms & MYFS_READ_PERM){
+                    permssn=permssn|MYFS_READ_PERM;
+                }
+                if (uap->type == 0){
+                        while(ip->i_din2->uidhead[i].myfs_uid!=0 && i<MAX_ACLS){
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        ip->i_din2->uidhead[i].myfs_uid=id;
+                                        ip->i_din2->uidhead[i].uid_perm=permssn;
+                                        uprintf("ACL ENTRY: Success, UID already exist\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                            error=EACCES;
+                            uprintf("ACL LIST FULL: Limit exceeded for UID list entries.\n ");
+                            VI_UNLOCK(nd.ni_vp);
+                            return(error);
+                        }
+                        ip->i_din2->uidhead[i].myfs_uid=id;
+                        ip->i_din2->uidhead[i].uid_perm=permssn;
+                        uprintf("ACL ENTRY: Success \n");
+                        VI_UNLOCK(nd.ni_vp);
+                        return 0;
+                }
+                else if(uap->type==1){
+                        if (uap->idnum==0){
+                                uprintf("EPERM: NOT PERMITTED, ROOT CANNOT SET FOR ITS OWN PERMISSION.\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        while(ip->i_din2->gidhead[i].myfs_gid!=0 && i<MAX_ACLS){
+                                if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                        ip->i_din2->gidhead[i].myfs_gid=id;
+                                        ip->i_din2->gidhead[i].gid_perm=permssn;
+                                        uprintf("ACL ENTRY: Success,GID already exist\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ACL LIST FULL: Limit exceeded for UID list entries. ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        ip->i_din2->gidhead[i].myfs_gid=id;
+                        ip->i_din2->gidhead[i].gid_perm=permssn;
+                        uprintf("ACL ENTRY: Success \n");
+                        VI_UNLOCK(nd.ni_vp);
+                        return 0;
+                }
+                else{
+                        uprintf("EPERM: NOT PERMITTED, SINCE WRONG TYPE ENTERED(not 0 or 1).\n");
+                        error=EPERM;
+                        VI_UNLOCK(nd.ni_vp);
+                        return(error);
+                }
+            }
+            else{
+                uprintf("EACCES: NOT PERMITTED, NOT OWNER OF FILE.\n");
+                error=EACCES;
+                VI_UNLOCK(nd.ni_vp);
+                return(error);
+            }
+        }
+        else{
+            uprintf("File was not in a myfs filesystem.\n");
+            error=EPERM;
+            return(error);
+        }
+        vrele(nd.ni_vp);
+        return 0;
+}
+int
+sys_clearacl(struct thread *td, struct clearacl_args *uap){
+        int error=0,i=0;
+        uint32_t id=0;
+        struct nameidata nd;
+        struct myfs_inode *ip;
+        NDINIT(&nd, LOOKUP, FOLLOW, UIO_USERSPACE, uap->name, td);
+        if ((error = namei(&nd)) != 0)
+                return error;
+        NDFREE(&nd, NDF_ONLY_PNBUF);
+        if (nd.ni_vp->v_op == &myfs_ffs_vnodeops2){
+            uprintf("File was in a myfs filesystem.\n");
+            ip=MYFS_VTOI(nd.ni_vp);     /*convert vnode pointer to inode pointer from vnode of result */
+            VI_LOCK(nd.ni_vp);
+            if(td->td_ucred->cr_ruid==ip->i_din2->di_uid){
+                if(uap->type==0){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                id=uap->idnum;
+                        }
+                        while(ip->i_din2->uidhead[i].myfs_uid!=id && i<MAX_ACLS){
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        ip->i_din2->uidhead[i].myfs_uid=0;
+                                        ip->i_din2->uidhead[i].uid_perm=0;
+                                        uprintf("ACL ENTRY CLEARED: Success.\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+                else if(uap->type==1){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                int k=0,flag=0;
+                                for(k=0;k<td->td_ucred->cr_ngroups;k++){
+                                        if(uap->idnum==td->td_ucred->cr_groups[k]){
+                                                flag=1;
+                                                id=uap->idnum;
+                                                break;
+                                        }
+                                }
+                                if(flag!=1){
+                                        uprintf("EACCES: NOT PERMITTED,OWNER NOT IN GROUP.\n");
+                                        error=EACCES;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return(error);
+                                }
+                                while(ip->i_din2->gidhead[i].myfs_gid!=0 && i<MAX_ACLS){
+                                        if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                                ip->i_din2->gidhead[i].myfs_gid=0;
+                                                ip->i_din2->gidhead[i].gid_perm=0;
+                                                uprintf("ACL GROUP ENTRY CLEARED: Success,\n");
+                                                VI_UNLOCK(nd.ni_vp);
+                                                return 0;
+                                        }
+                                        i++;
+                                }
+                                if(i==MAX_ACLS){
+                                        error=EACCES;
+                                        uprintf("ERROR: UID list entries not found. \n ");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return(error);
+                                }
+                        }
+                   }
+                else{
+                        uprintf("EPERM: NOT PERMITTED, SINCE WRONG TYPE ENTERED(not 0 or 1).\n");
+                        error=EPERM;
+                        VI_UNLOCK(nd.ni_vp);
+                        return(error);
+                }
+            }
+            else if(td->td_ucred->cr_ruid==0){
+                if(uap->type==0){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                id=uap->idnum;
+                        }
+                        while(ip->i_din2->uidhead[i].myfs_uid!=id && i<MAX_ACLS){
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        ip->i_din2->uidhead[i].myfs_uid=0;
+                                        ip->i_din2->uidhead[i].uid_perm=0;
+                                        uprintf("ACL ENTRY CLEARED: Success.\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+                else if(uap->type==1){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                id=uap->idnum;
+                        }
+                        while(ip->i_din2->gidhead[i].myfs_gid!=0 && i<MAX_ACLS){
+                                if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                        ip->i_din2->gidhead[i].myfs_gid=0;
+                                        ip->i_din2->gidhead[i].gid_perm=0;
+                                        uprintf("ACL GROUP ENTRY CLEARED: Success,\n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n  ");
+                                VI_UNLOCK(nd.ni_vp);
+                                 return(error);
+                        }
+                }
+                else{
+                        uprintf("EPERM: NOT PERMITTED, SINCE WRONG TYPE ENTERED(not 0 or 1).\n");
+                        error=EPERM;
+                        VI_UNLOCK(nd.ni_vp);
+                        return(error);
+                }
+           }
+           else{
+                uprintf("EACCES: NOT PERMITTED, NOT OWNER OF FILE.\n");
+                error=EACCES;
+                VI_UNLOCK(nd.ni_vp);
+                return(error);
+            }
+        }
+        else{
+            uprintf("File was not in a myfs filesystem.\n");
+            error=EPERM;
+            return(error);
+        }
+        vrele(nd.ni_vp);
+        return 0;
+}
+int
+sys_getacl(struct thread *td, struct getacl_args *uap){
+    int error=0,i=0;
+    uint32_t id=0;
+    struct nameidata nd;
+    struct myfs_inode *ip;
+    NDINIT(&nd, LOOKUP, FOLLOW, UIO_USERSPACE, uap->name, td);
+    if ((error = namei(&nd)) != 0)
+            return error;
+    NDFREE(&nd, NDF_ONLY_PNBUF);
+    if (nd.ni_vp->v_op == &myfs_ffs_vnodeops2){
+        uprintf("File was in a myfs filesystem.\n");
+        ip=MYFS_VTOI(nd.ni_vp);     /*convert vnode pointer to inode pointer from vnode of result */
+        VI_LOCK(nd.ni_vp);
+        if(td->td_ucred->cr_ruid==0){
+                if(uap->type==0){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                id=uap->idnum;
+                        }
+                        while(i<MAX_ACLS){
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        td->td_retval[0]=ip->i_din2->uidhead[i].uid_perm;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+                else if(uap->type==1){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        while(i<MAX_ACLS){
+                                if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                        td->td_retval[0]=ip->i_din2->gidhead[i].gid_perm;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n  ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+        }
+        else{
+                if(uap->type==0){
+                        i=0;
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                uprintf("get acl:id set \n");
+                                id=uap->idnum;
+                        }
+                        while(i<MAX_ACLS){
+                                if(ip->i_din2->uidhead[i].myfs_uid==id){
+                                        uprintf("get acl:id found \n");
+                                        td->td_retval[0]=ip->i_din2->uidhead[i].uid_perm;
+                                        td->td_retval[1] = 0;
+                                        uprintf("get acl:return value set \n");
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.\n ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+                else if(uap->type==1){
+                        if (uap->idnum==0){
+                                uprintf("ERROR:Invalid id=0\n");
+                                error=EPERM;
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                        else{
+                                int k=0,flag=0;
+                                for(k=0;k<td->td_ucred->cr_ngroups;k++){
+                                        if(uap->idnum==td->td_ucred->cr_groups[k]){
+                                                flag=1;
+                                                id=uap->idnum;
+                                                break;
+                                        }
+                                }
+                                if(flag!=1){
+                                        uprintf("EACCES: NOT PERMITTED,OWNER NOT IN GROUP.");
+                                        error=EACCES;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return(error);
+                                }
+                        }
+                        while(i<MAX_ACLS){
+                                if(ip->i_din2->gidhead[i].myfs_gid==id){
+                                        td->td_retval[0]=ip->i_din2->gidhead[i].gid_perm;
+                                        VI_UNLOCK(nd.ni_vp);
+                                        return 0;
+                                }
+                                i++;
+                        }
+                        if(i==MAX_ACLS){
+                                error=EACCES;
+                                uprintf("ERROR: UID list entries not found.  ");
+                                VI_UNLOCK(nd.ni_vp);
+                                return(error);
+                        }
+                }
+                else{
+                        uprintf("EPERM: NOT PERMITTED, SINCE WRONG TYPE ENTERED(not 0 or 1).");
+                        error=EPERM;
+                        VI_UNLOCK(nd.ni_vp);
+                        return(error);
+                }
+       }
+    }
+    else{
+        uprintf("File was not in a myfs filesystem.\n");
+        error=EPERM;
+        return(error);
+    }
+    vrele(nd.ni_vp);
+    return 0;
+}

@@ -1,0 +1,33 @@
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/sysproto.h>
+#include <sys/libkern.h>
+#include <sys/malloc.h>
+#include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/proc.h>
+#include <sys/ucred.h>
+#include <sys/queue.h>
+#include <sys/types.h>
+#include <sys/sema.h>
+#include <sys/errno.h>
+
+
+int
+sys_myfs_gid(struct thread *td, struct myfs_gid_args *uap){
+
+        gid_t ggrid=0,gsid=0;
+        int avai_grp=0,i=0;
+        ggrid=td->td_ucred->cr_rgid;
+        gsid=td->td_ucred->cr_svgid;
+        avai_grp=td->td_ucred->cr_ngroups;
+        printf(" \n real group id is %d\n saved gid %d\n count groups %d:",ggrid,gsid,avai_grp);
+        while(i<avai_grp) {
+                printf("gid in array at pos %d is %d\n",i,td->td_ucred->cr_groups[i]);
+                i++;
+        }
+        return 0;
+}
+
+

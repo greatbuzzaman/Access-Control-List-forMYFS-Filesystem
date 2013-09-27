@@ -1,0 +1,81 @@
+SETACL(2)                 BSD System Calls Manual                    SETACL(2)
+
+NAME
+     setacl -- Set th access control list.
+
+LIBRARY
+     Standard C Library (libc, -lc)
+
+SYNOPSIS
+     #include <param.h>
+        #include <systm.h>
+        #include <bio.h>
+        #include <buf.h>
+        #include<sysproto.h>
+        #include <sys/fcntl.h>
+        #include <sys/namei.h>
+        #include <sys/mount.h>
+        #include <sys/vnode.h>
+        #include <sys/dirent.h>
+        #include <sys/extattr.h>
+
+        #include "../../../local/myfs/myfs_quota.h"
+        #include "../../../local/myfs/myfs_inode.h"
+        #include "../../../local/myfs/myfs_dir.h"
+        #include "../../../local/myfs/myfs_extattr.h"
+        #include "../../../local/myfs/myfs_ufsmount.h"
+        #include "../../../local/myfs/myfs_ufs_extern.h"
+        #include "../../../local/myfs/myfs_ffs_extern.h"
+        #define MAX_ACLS 16
+
+
+     int
+     setacl(char *name, int type, int idnum,int perms);
+
+DESCRIPTION
+        Sets  an  existing file's access control list (ACL) . Pathname points to a path name of a file.It
+        take a pathname, a numeric type, a numeric id number, and a numeric permissions flag
+        ( bit 2 for read,bit 1 for write, bit 0 for execute). The type is be 0 if the numeric id number is a user-id,
+        while it is  1 if the numeric id number is a group-id. If the id number
+        passed in to this system call is zero then the id number of the
+        currently running process is used ( this gives you id number zero as a way to indicate unset fields
+        of the ACL list you associate with each file).
+
+
+        Access Control Lists
+        An ACL consists of a series of entries.Entries can be categorized  in
+
+        Entries  can  appear  in any order.  The system orders them as needed for access checking.
+        In  addition,  up  to 16optional ACL entries can be set to restrict or grant access to a file.
+
+        Altering a base ACL entry's modes with changes the file's corresponding
+        permission bits.  The permission bits can be altered also by using (see
+        chmod(2)) and read using (see stat(2)).
+
+RETURN VALUE
+        Return the following values:
+
+        ON Successful completion,returns'0' and  an appropriate message to console.
+
+        ON Failure,returns error and  the appropriate error messageto the console.
+
+
+
+ERRORS
+        EPERM- Operation not permitted, does not have owner or root rights
+        EACCESS- Access denied for particualr action .
+
+DEPENDENCIES
+        FOR "myfs" filesystem.
+AUTHOR
+        AMAN SHARMA
+SEE ALSO
+        getacl(),clearacl()
+
+setacl(2)                                                            setacl(2)
+
+
+BSD                             August 7, 2013                              BSD
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+

@@ -1,0 +1,13 @@
+#include<sys/types.h>
+#include<unistd.h>
+#include<stdio.h>
+
+int main(int argc,char *argv[]) {
+        gid_t g=0;
+        int err=0;
+        g=getgid();
+        pid_t p=0;
+        p=getpid();
+        err=myfs_gid();
+        return 0;
+}
