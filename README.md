@@ -4,22 +4,21 @@ Access-Control-List-forMYFS-Filesystem
 
 
 New ACL mechanism for UFS based “MYFS” filesystem in FreeBSD
+This project involves a new kind of filesystem called "MYFS" filesystem. This file system is based on UFS but with no system ACL support. 
+This project involved modification to MYFS filesystem to incorporate a new ACL mechanism which supplements normal file permissions but 
+in slightly different way than what actual system ACLs do.
 
+This ACL is only for the files stored in MYFS filesystem. These do not apply to the files stored elsewhere in the system. 
+This new ACL support is added to the filesystem by modifying the on disk inode structure to hold the ACLs for the group-ids and user-ids. 
+Three new system calls have been added to the FreeBSD kernel in order to implement this ACL mechanism.
 
-TO modify the "myfs" filesystem to implement "Access control lists".
-I firstly implemented two structures to hold the permissions for each "User-id" and "group-id", in myfs_dinode.h file.
-Then implemented the setacl() according to requirement, making and array for both the structures of maximum 16 entries.
-I compared on the basis of whether its the owner of file who is setting the permissions for different users or root,
- depending on the type passed in the system call function for Type 0 -uid and Type -1 for gid.
-Permissions:
-        - As usual root should be able to do anything so should be allowed
-        - Only the owner can modify ACLs for a file.
-        - Other users can see the ACL setting if it applies to them (so
-          they are the UID mentioned in the ACL, or they are in the
-          group being asked about) but not other ACL settings.
-        - An ACL for a group can only be added if the calling process
-          is a member of that group.
+int setacl(char *name, int type, int idnum, int perms)
 
-similarly implemented teh clearacl() to clear permissions entry in Acl Lists byt the owner or root.
+int getacl(char *name, int type, int idnum)
 
-And finally implemented getacl() to check for its permissons in acl list for file.
+int clearacl(char *name, int type, int idnum)
+
+Manual pages have also been created for these system calls as a part of the projects
+
+The vnode access operation of the MYFS filesystem has been modified such that open(2) and exec(2) system calls follow the new ACL while 
+accessing the files in MYFS filesystem. When accessing the files not in MYFS filesystem, these two system calls behave as usual.
